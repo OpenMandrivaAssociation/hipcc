@@ -1,0 +1,159 @@
+--- src/hipBin_amd.h	2026-07-23 23:46:28.169388426 +0200
++++ src/hipBin_amd.h	2026-07-23 23:46:28.170252931 +0200
+@@ -196,6 +196,9 @@
+ }
+ 
+ // populates clang path.
++// On FHS distro layouts (OpenMandriva etc.) there is usually no private
++// ROCm LLVM under $ROCM_PATH/lib/llvm. Prefer that tree only if present
++// (TheRock/AMD private clang fork); otherwise use system /usr/bin.
+ void HipBinAmd::constructCompilerPath() {
+   string compilerPath;
+   const EnvVariables& envVariables = getEnvVariables();
+@@ -205,13 +208,19 @@
+       compilerPath = getHipPath();
+       hipClangPath = compilerPath;
+       hipClangPath /= "bin";
++      compilerPath = hipClangPath.string();
+     } else {
+-      compilerPath = getRoccmPath();
+-      hipClangPath = compilerPath;
+-      hipClangPath /= "lib/llvm/bin";
++      fs::path privateClangDir = getRoccmPath();
++      privateClangDir /= "lib/llvm/bin";
++      fs::path privateClangXX = privateClangDir;
++      privateClangXX /= "clang++";
++      if (fs::exists(privateClangXX)) {
++        compilerPath = privateClangDir.string();
++      } else {
++        // System clang (OpenMandriva: /usr/bin/clang++)
++        compilerPath = "/usr/bin";
++      }
+     }
+-
+-    compilerPath = hipClangPath.string();
+   } else {
+     compilerPath = envVariables.hipClangPathEnv_;
+   }
+@@ -311,27 +320,43 @@
+   const EnvVariables& var = getEnvVariables();
+   const string& rocclrHomePath = getRocclrHomePath();
+   const string& roccmPath = getRoccmPath();
+-  fs::path bitCodePath = rocclrHomePath;
+-  bitCodePath /= "lib/bitcode";
+   string deviceLibPath = var.deviceLibPathEnv_;
+-  if (deviceLibPath.empty() && fs::exists(bitCodePath)) {
+-    deviceLibPath = bitCodePath.string();
++  if (!deviceLibPath.empty()) {
++    return deviceLibPath;
+   }
+ 
+-  if (deviceLibPath.empty()) {
+-    fs::path amdgcnBitcode = roccmPath;
+-    amdgcnBitcode /= "amdgcn/bitcode";
+-    if (fs::exists(amdgcnBitcode)) {
+-      deviceLibPath = amdgcnBitcode.string();
+-    } else {
+-      // This path is to support an older build of the device library
+-      // TODO(hipcc): To be removed in the future.
+-      fs::path lib = roccmPath;
+-      lib /= "lib";
+-      deviceLibPath = lib.string();
++  // Prefer FHS multi-lib layouts (lib64) then classic ROCm layouts.
++  const char* suffixes[] = {
++      "lib64/amdgcn/bitcode",
++      "lib/amdgcn/bitcode",
++      "amdgcn/bitcode",
++      "lib64/bitcode",
++      "lib/bitcode",
++  };
++  for (const char* suf : suffixes) {
++    fs::path p = rocclrHomePath;
++    p /= suf;
++    if (fs::exists(p)) {
++      return p.string();
++    }
++  }
++  for (const char* suf : suffixes) {
++    fs::path p = roccmPath;
++    p /= suf;
++    if (fs::exists(p)) {
++      return p.string();
+     }
+   }
+-  return deviceLibPath;
++
++  // Last-resort fallbacks used by older device-lib installs.
++  fs::path lib = roccmPath;
++  lib /= "lib64";
++  if (fs::exists(lib)) {
++    return lib.string();
++  }
++  lib = roccmPath;
++  lib /= "lib";
++  return lib.string();
+ }
+ 
+ 
+@@ -366,17 +391,25 @@
+ }
+ 
+ string HipBinAmd::getHipLibPath() const {
+-  string hipLibPath;
+   const EnvVariables& env = getEnvVariables();
+   if (!env.hipLibPathEnv_.empty()) {
+-    hipLibPath = env.hipLibPathEnv_;
++    return env.hipLibPathEnv_;
+   }
+-  else if (!env.hipPathEnv_.empty()) {
+-    fs::path p = env.hipLibPathEnv_;
+-    p /= "lib";
+-    hipLibPath = p.string();
++
++  // Use constructed HIP path (from hipcc location / HIP_PATH / --hip-path),
++  // not only the HIP_PATH environment variable. Prefer lib64 on multi-lib.
++  const string& hipPath = getHipPath();
++  if (!hipPath.empty()) {
++    fs::path lib64 = hipPath;
++    lib64 /= "lib64";
++    if (fs::exists(lib64)) {
++      return lib64.string();
++    }
++    fs::path lib = hipPath;
++    lib /= "lib";
++    return lib.string();
+   }
+-  return hipLibPath;
++  return string();
+ }
+ 
+ string HipBinAmd::getHipCC() const {
+@@ -867,6 +900,28 @@
+     HIPLDFLAGS += " -fuse-ld=lld --ld-path=\"" + hipClangPath + "/lld-link.exe\"";
+   }
+ 
++  // FHS: tell clang where device libs and the HIP runtime live.
++  // Without these, clang only searches $ROCM_PATH/amdgcn/bitcode and
++  // $ROCM_PATH/lib — wrong for multi-lib distros using lib64.
++  // Only inject when the user did not already pass the option.
++  auto hasOpt = [&](const string& opt) {
++    return toolArgs.find(opt) != string::npos ||
++           HIPCXXFLAGS.find(opt) != string::npos ||
++           HIPLDFLAGS.find(opt) != string::npos;
++  };
++  if (!roccmPath.empty() && !hasOpt("--rocm-path=")) {
++    string rocmOpt = " --rocm-path=" + roccmPath;
++    HIPCXXFLAGS += rocmOpt;
++    HIPCFLAGS += rocmOpt;
++    HIPLDFLAGS += rocmOpt;
++  }
++  if (!deviceLibPath.empty() && !hasOpt("--rocm-device-lib-path=")) {
++    string devOpt = " --rocm-device-lib-path=" + deviceLibPath;
++    HIPCXXFLAGS += devOpt;
++    HIPCFLAGS += devOpt;
++    HIPLDFLAGS += devOpt;
++  }
++
+   if (!compileOnly) {
+     string hip_path = getHipLibPath();
+     if (!hip_path.empty()) {
