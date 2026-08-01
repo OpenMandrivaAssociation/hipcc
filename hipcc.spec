@@ -1,6 +1,6 @@
 Name:		hipcc
 Version:	7.14.0
-Release:	1
+Release:	2
 Summary:	HIP compiler driver (hipcc / hipconfig)
 License:	MIT
 Group:		Development/Other
@@ -19,7 +19,6 @@ Requires:	clang >= %{rocm_llvm_maj_ver}
 # hipcc typically needs hip runtime headers available for useful work
 # soft-suggest via Recommends later once rocm-hip exists
 
-ExclusiveArch:	%{x86_64} %{aarch64}
 
 %description
 hipcc and hipconfig — compiler drivers that invoke system clang for
