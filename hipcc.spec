@@ -1,11 +1,11 @@
 Name:		hipcc
-Version:	7.14.0
-Release:	2
+Version:	10.0.0
+Release:	1
 Summary:	HIP compiler driver (hipcc / hipconfig)
 License:	MIT
 Group:		Development/Other
 URL:		https://github.com/ROCm/llvm-project
-# Filtered amd/hipcc from llvm-project @ therock-7.14
+# Filtered amd/hipcc from llvm-project @ therock-10.0
 Source0:	hipcc-%{version}.tar.gz
 # FHS: system /usr/bin/clang++ (unless private ROCm llvm exists); lib64 paths
 Patch0:		0001-fhs-system-clang-lib64.patch

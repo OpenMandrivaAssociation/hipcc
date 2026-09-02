@@ -1,6 +1,6 @@
---- src/hipBin_amd.h	2026-07-23 23:46:28.169388426 +0200
-+++ src/hipBin_amd.h	2026-07-23 23:46:28.170252931 +0200
-@@ -196,6 +196,9 @@
+--- src/hipBin_amd.h	2026-09-02 15:31:09.000000000 +0200
++++ src/hipBin_amd.h	2026-09-02 15:34:32.156294104 +0200
+@@ -196,17 +196,25 @@
  }
  
  // populates clang path.
@@ -10,32 +10,30 @@
  void HipBinAmd::constructCompilerPath() {
    string compilerPath;
    const EnvVariables& envVariables = getEnvVariables();
-@@ -205,13 +208,19 @@
-       compilerPath = getHipPath();
-       hipClangPath = compilerPath;
-       hipClangPath /= "bin";
-+      compilerPath = hipClangPath.string();
-     } else {
--      compilerPath = getRoccmPath();
--      hipClangPath = compilerPath;
--      hipClangPath /= "lib/llvm/bin";
-+      fs::path privateClangDir = getRoccmPath();
-+      privateClangDir /= "lib/llvm/bin";
-+      fs::path privateClangXX = privateClangDir;
-+      privateClangXX /= "clang++";
-+      if (fs::exists(privateClangXX)) {
-+        compilerPath = privateClangDir.string();
-+      } else {
-+        // System clang (OpenMandriva: /usr/bin/clang++)
-+        compilerPath = "/usr/bin";
-+      }
-     }
--
+   if (envVariables.hipClangPathEnv_.empty()) {
+-    fs::path hipClangPath;
+-    compilerPath = getRoccmPath();
+-    hipClangPath = compilerPath;
+-    hipClangPath /= "lib";
+-    hipClangPath /= "llvm";
+-    hipClangPath /= "bin";
 -    compilerPath = hipClangPath.string();
++    fs::path privateClangDir = getRoccmPath();
++    privateClangDir /= "lib";
++    privateClangDir /= "llvm";
++    privateClangDir /= "bin";
++    fs::path privateClangXX = privateClangDir;
++    privateClangXX /= "clang++";
++    if (fs::exists(privateClangXX)) {
++      compilerPath = privateClangDir.string();
++    } else {
++      // System clang (OpenMandriva: /usr/bin/clang++)
++      compilerPath = "/usr/bin";
++    }
    } else {
      compilerPath = envVariables.hipClangPathEnv_;
    }
-@@ -311,27 +320,43 @@
+@@ -293,27 +301,43 @@
    const EnvVariables& var = getEnvVariables();
    const string& rocclrHomePath = getRocclrHomePath();
    const string& roccmPath = getRoccmPath();
@@ -95,7 +93,7 @@
  }
  
  
-@@ -366,17 +391,25 @@
+@@ -348,17 +372,25 @@
  }
  
  string HipBinAmd::getHipLibPath() const {
@@ -128,8 +126,8 @@
  }
  
  string HipBinAmd::getHipCC() const {
-@@ -867,6 +900,28 @@
-     HIPLDFLAGS += " -fuse-ld=lld --ld-path=\"" + hipClangPath + "/lld-link.exe\"";
+@@ -851,6 +883,28 @@
+     HIPLDFLAGS += " -fuse-ld=lld --ld-path=\"" + ldPath.string() + "\"";
    }
  
 +  // FHS: tell clang where device libs and the HIP runtime live.
